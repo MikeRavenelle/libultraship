@@ -5,6 +5,9 @@ set_target_properties(libultraship PROPERTIES PREFIX "")
 set_property(TARGET libultraship PROPERTY CXX_STANDARD 20)
 # Need to set C11 for libgfxd (_Alignas)
 set_property(TARGET libultraship PROPERTY C_STANDARD 11)
+set_target_properties(libultraship PROPERTIES ENABLE_EXPORTS TRUE)
+set_target_properties(libultraship PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 option(USE_OPENGLES "Enable GLES3" OFF)
@@ -15,7 +18,30 @@ use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()
 
 #=================== Top-Level ===================
+
 configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/ship/install_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/ship/install_config.h @ONLY)
+
+if(ENABLE_SCRIPTING)
+    file(GLOB SCRIPT_PUB_KEYS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../keys/script/*.pem")
+    set(EMBEDDED_KEYS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/ship/DefaultKeys.h)
+    set(GENERATE_KEYS_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/../tools/generate_keys_header.py)
+    get_filename_component(EMBEDDED_KEYS_DIR ${EMBEDDED_KEYS_HEADER} DIRECTORY)
+
+    add_custom_command(
+        OUTPUT ${EMBEDDED_KEYS_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${EMBEDDED_KEYS_DIR}
+        COMMAND Python3::Interpreter ${GENERATE_KEYS_SCRIPT}
+                ${EMBEDDED_KEYS_HEADER}
+                ${SCRIPT_PUB_KEYS}
+        DEPENDS ${GENERATE_KEYS_SCRIPT}
+                ${SCRIPT_PUB_KEYS}
+        COMMENT "Generating DefaultKeys.h from all keys in /keys/script/"
+        VERBATIM
+    )
+
+    add_custom_target(GenerateScriptKeys DEPENDS ${EMBEDDED_KEYS_HEADER})
+    add_dependencies(libultraship GenerateScriptKeys)
+endif()
 
 #=================== Fast ===================
 
@@ -106,7 +132,12 @@ if (USE_OPENGLES)
     endif()
 endif()
 
-target_link_libraries(libultraship PUBLIC prism)
+target_link_libraries(libultraship PUBLIC prism monocypher)
+
+if(ENABLE_SCRIPTING)
+    target_link_libraries(libultraship PUBLIC libtcc libtcc1)
+    target_compile_definitions(libultraship PUBLIC ENABLE_SCRIPTING)
+endif()
 
 #=================== Compile Options & Defs ===================
 

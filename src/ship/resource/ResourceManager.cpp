@@ -26,6 +26,11 @@ ResourceIdentifier::ResourceIdentifier(const std::string& path, const uintptr_t 
     mHash = CalculateHash();
 }
 
+ResourceIdentifier::ResourceIdentifier(std::string&& path, const uintptr_t owner, const std::shared_ptr<Archive> parent)
+    : Path(std::move(path)), Owner(owner), Parent(parent) {
+    mHash = CalculateHash();
+}
+
 bool ResourceIdentifier::operator==(const ResourceIdentifier& rhs) const {
     return Owner == rhs.Owner && Path == rhs.Path && Parent == rhs.Parent;
 }
@@ -101,11 +106,17 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
         return LoadResourceProcess({ newFilePath, identifier.Owner, identifier.Parent }, false, initData);
     }
 
+    // Cache the starts_with check to avoid repeated string comparisons
+    const bool isAltPath = identifier.Path.starts_with(IResource::gAltAssetPrefix);
+    const bool shouldCheckAlt = !loadExact && mAltAssetsEnabled && !isAltPath;
+
     // Attempt to load the alternate version of the asset, if we fail then we continue trying to load the standard
     // asset.
-    if (!loadExact && mAltAssetsEnabled && !identifier.Path.starts_with(IResource::gAltAssetPrefix)) {
-        const auto altPath = IResource::gAltAssetPrefix + identifier.Path;
-        auto altResource = LoadResourceProcess({ altPath, identifier.Owner, identifier.Parent }, loadExact, initData);
+    if (shouldCheckAlt) {
+        std::string altPath = IResource::gAltAssetPrefix;
+        altPath += identifier.Path;
+        auto altResource =
+            LoadResourceProcess({ std::move(altPath), identifier.Owner, identifier.Parent }, loadExact, initData);
 
         if (altResource != nullptr) {
             return altResource;
@@ -122,7 +133,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
 
     // Check for resource load errors which can indicate an alternate asset.
     // If we are attempting to load an alternate asset, we can return null
-    if (!loadExact && mAltAssetsEnabled && identifier.Path.starts_with(IResource::gAltAssetPrefix)) {
+    if (!loadExact && mAltAssetsEnabled && isAltPath) {
         if (std::holds_alternative<ResourceLoadError>(cacheLine)) {
             try {
                 // If we have attempted to cache an alternate asset, but failed, we return nullptr and rely on the
@@ -132,14 +143,17 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
                     return nullptr;
                 }
             } catch (std::bad_variant_access const& e) {
-                // Ignore the exception. This should never happen. The last check should've returned the resource.
+                // This should never happen. The holds_alternative check above should prevent it.
+                SPDLOG_ERROR("Unexpected bad_variant_access in LoadResourceProcess: {}", e.what());
             }
         }
     }
 
-    // Get the file from the OTR
+    // Get the file from the OTR. It may be null when the resource exists only as a `.meta`
+    // alias (no real file at this path); fall through so the loader can resolve the alias,
+    // but only when a `.meta` for this path actually exists.
     auto file = LoadFileProcess(identifier.Path);
-    if (file == nullptr) {
+    if (file == nullptr && !mArchiveManager->HasFile(identifier.Path + ".meta")) {
         SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
         mResourceCache[identifier] = ResourceLoadError::NotFound;
         return nullptr;
@@ -293,7 +307,8 @@ ResourceManager::GetCachedResource(std::variant<ResourceLoadError, std::shared_p
 
             return resource;
         } catch (std::bad_variant_access const& e) {
-            // Ignore the exception
+            // This should never happen. The holds_alternative check above should prevent it.
+            SPDLOG_ERROR("Unexpected bad_variant_access in GetCachedResource: {}", e.what());
         }
     }
 
@@ -378,6 +393,12 @@ void ResourceManager::UnloadResourcesProcess(const ResourceFilter& filter) {
 
     for (const auto& key : *list.get()) {
         UnloadResource({ key, mDefaultCacheOwner, mDefaultCacheArchive });
+
+        // A `.meta` alias resource is cached under its base path, which is not itself a listed
+        // file. Evict it too so it can't survive stale after its target/dependencies are unloaded.
+        if (key.ends_with(".meta")) {
+            UnloadResource({ key.substr(0, key.size() - 5), mDefaultCacheOwner, mDefaultCacheArchive });
+        }
     }
 }
 
@@ -406,6 +427,11 @@ size_t ResourceManager::UnloadResource(const ResourceIdentifier& identifier) {
 
 size_t ResourceManager::UnloadResource(const std::string& filePath) {
     return UnloadResource({ filePath, mDefaultCacheOwner, mDefaultCacheArchive });
+}
+
+void ResourceManager::CacheExternalResource(const std::string& filePath, std::shared_ptr<IResource> resource) {
+    const std::lock_guard<std::mutex> lock(mMutex);
+    mResourceCache[{ filePath, mDefaultCacheOwner, mDefaultCacheArchive }] = resource;
 }
 
 bool ResourceManager::WriteResource(const ResourceIdentifier& identifier, const std::vector<uint8_t>& data,

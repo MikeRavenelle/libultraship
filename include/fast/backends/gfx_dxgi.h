@@ -2,6 +2,7 @@
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
 
 #include "gfx_rendering_api.h"
+#include "ship/utils/HResultException.h"
 
 #include <functional>
 
@@ -32,6 +33,8 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     void SetMouseCapture(bool capture) override;
     bool IsMouseCaptured() override;
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) override;
+    void SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) override;
+    Ship::WindowRect GetPrimaryMonitorRect() override;
     void HandleEvents() override;
     bool IsFrameReady() override;
     void SwapBuffersBegin() override;

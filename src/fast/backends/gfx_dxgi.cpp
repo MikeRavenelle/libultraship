@@ -33,6 +33,7 @@
 #include "fast/backends/gfx_direct3d_common.h"
 #include "fast/backends/gfx_screen_config.h"
 #include "fast/interpreter.h"
+#include "fast/Fast3dGui.h"
 
 #define DECLARE_GFX_DXGI_FUNCTIONS
 #include "fast/backends/gfx_dxgi.h"
@@ -163,7 +164,7 @@ void GfxWindowBackendDXGI::ToggleBorderlessWindowFullScreen(bool enable, bool ca
             ShowWindow(h_wnd, SW_MAXIMIZE);
         } else {
             std::tuple<HMONITOR, RECT, BOOL> Monitor;
-            auto conf = Ship::Context::GetInstance()->GetConfig();
+            auto conf = Ship::Context::GetRawInstance()->GetConfig();
             current_width = conf->GetInt("Window.Width", 640);
             current_height = conf->GetInt("Window.Height", 480);
             mPosX = conf->GetInt("Window.PositionX", 100);
@@ -355,9 +356,21 @@ void GfxWindowBackendDXGI::HandleRawInputBuffered() {
 static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_param, LPARAM l_param) {
 
     char fileName[256];
-    Ship::WindowEvent event_impl;
+    Fast::WindowEvent event_impl;
     event_impl.Win32 = { h_wnd, static_cast<int>(message), static_cast<int>(w_param), static_cast<int>(l_param) };
-    Ship::Context::GetInstance()->GetWindow()->GetGui()->HandleWindowEvents(event_impl);
+    auto ctx = Ship::Context::GetRawInstance();
+    if (ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui()) {
+        auto fast3dGui = std::dynamic_pointer_cast<Fast::Fast3dGui>(ctx->GetWindow()->GetGui());
+        if (fast3dGui) {
+            fast3dGui->HandleWindowEvents(event_impl);
+        } else {
+            static bool sWarnedOnce = false;
+            if (!sWarnedOnce) {
+                SPDLOG_ERROR("gfx_dxgi: Gui is not a Fast3dGui; cannot dispatch window event");
+                sWarnedOnce = true;
+            }
+        }
+    }
     std::tuple<HMONITOR, RECT, BOOL> newMonitor;
     GfxWindowBackendDXGI* self = reinterpret_cast<GfxWindowBackendDXGI*>(GetWindowLongPtr(h_wnd, GWLP_USERDATA));
     switch (message) {
@@ -480,7 +493,7 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
             break;
         case WM_DROPFILES:
             DragQueryFileA((HDROP)w_param, 0, fileName, 256);
-            Ship::Context::GetInstance()->GetFileDropMgr()->SetDroppedFile(fileName);
+            Ship::Context::GetRawInstance()->GetFileDropMgr()->SetDroppedFile(fileName);
             break;
         case WM_DISPLAYCHANGE:
             self->monitor_list = GetMonitorList();
@@ -496,8 +509,10 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
             }
             break;
         case WM_KILLFOCUS:
-            if (!Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
-                ControllerBlockGameInput(ALLOW_BACKGROUND_INPUTS_BLOCK_ID);
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetConsoleVariables()) {
+                if (!ctx->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+                    ControllerBlockGameInput(ALLOW_BACKGROUND_INPUTS_BLOCK_ID);
+                }
             }
             self->mInFocus = false;
             break;
@@ -728,6 +743,31 @@ void GfxWindowBackendDXGI::GetDimensions(uint32_t* width, uint32_t* height, int3
     *posY = mPosY;
 }
 
+void GfxWindowBackendDXGI::SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) {
+    current_width = width;
+    current_height = height;
+    mPosX = posX;
+    mPosY = posY;
+    if (h_wnd) {
+        RECT wr = { mPosX, mPosY, mPosX + static_cast<int32_t>(current_width),
+                    mPosY + static_cast<int32_t>(current_height) };
+        if (!mFullScreen) {
+            AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
+            SetWindowPos(h_wnd, nullptr, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top, SWP_FRAMECHANGED);
+        }
+    }
+}
+
+Ship::WindowRect GfxWindowBackendDXGI::GetPrimaryMonitorRect() {
+    auto monitors = GetMonitorList();
+    for (const auto& [hmon, rect, isPrimary] : monitors) {
+        if (isPrimary) {
+            return { rect.left, rect.top, rect.right, rect.bottom };
+        }
+    }
+    return { 0, 0, 0, 0 };
+}
+
 void GfxWindowBackendDXGI::HandleEvents() {
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -878,7 +918,7 @@ void GfxWindowBackendDXGI::SwapBuffersBegin() {
     // mLengthInVsyncFrames (now mVsyncEnabled) was used as present interval. Present interval >1 (aka fractional
     // V-Sync) breaks VRR and introduces even more input lag than capping via normal V-Sync does. Get the present
     // interval the user wants instead (V-Sync toggle).
-    mVsyncEnabled = Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger(CVAR_VSYNC_ENABLED, 1) ? 1 : 0;
+    mVsyncEnabled = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_VSYNC_ENABLED, 1) ? 1 : 0;
 
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
@@ -952,7 +992,7 @@ void GfxWindowBackendDXGI::SwapBuffersEnd() {
 
     QueryPerformanceCounter(&t2);
 
-    mZeroLatency = mPendingFrameStats.rbegin()->first == stats.PresentCount;
+    mZeroLatency = !mPendingFrameStats.empty() && mPendingFrameStats.rbegin()->first == stats.PresentCount;
 
     // printf(L"done %I64u gpu:%d wait:%d freed:%I64u frame:%u %u monitor:%u t:%I64u\n", (unsigned long
     // long)(t0.QuadPart - qpc_init), (int)(t1.QuadPart - t0.QuadPart), (int)(t2.QuadPart - t0.QuadPart), (unsigned
@@ -1068,7 +1108,15 @@ bool GfxWindowBackendDXGI::CanDisableVsync() {
 }
 
 void GfxWindowBackendDXGI::Destroy() {
-    // TODO: destroy _any_ resources used by dxgi, including the window handle
+    // During messy teardowns, it doesn't take a huge tree to eat through the stack.
+    // Iteratively clear frame-stat containers to avoid MSVC's recursive _Erase_tree
+    // stack overflow on deep std::set/std::map trees during destruction.
+    while (!mPendingFrameStats.empty()) {
+        mPendingFrameStats.erase(mPendingFrameStats.begin());
+    }
+    while (!mFrameStats.empty()) {
+        mFrameStats.erase(mFrameStats.begin());
+    }
 }
 
 bool GfxWindowBackendDXGI::IsFullscreen() {
@@ -1080,7 +1128,7 @@ bool GfxWindowBackendDXGI::IsFullscreen() {
 void ThrowIfFailed(HRESULT res) {
     if (FAILED(res)) {
         fprintf(stderr, "Error: 0x%08X\n", res);
-        throw res;
+        throw Ship::HResultException(res);
     }
 }
 
@@ -1089,7 +1137,7 @@ void ThrowIfFailed(HRESULT res, HWND h_wnd, const char* message) {
         char full_message[256];
         snprintf(full_message, sizeof(full_message), "%s\n\nHRESULT: 0x%08X", message, res);
         MessageBoxA(h_wnd, full_message, "Error", MB_OK | MB_ICONERROR);
-        throw res;
+        throw Ship::HResultException(res, message);
     }
 }
 

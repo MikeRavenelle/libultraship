@@ -347,8 +347,11 @@ ZAPDUtils.lib
 .idea/
 cmake-build-**
 cmake_install.cmake
+tcc_c2str
+tcc_c2str.exe
 *.a
 *.o
+*.so
 *.pc
 *.vcxproj
 *.sln
@@ -356,12 +359,18 @@ cmake_install.cmake
 *.stamp
 *.depend
 *.lib
+*.exp
+*.dll
+*.dylib
 *.tlog
 *.recipe
 src/ship/install_config.h
+src/ship/DefaultKeys.h
 # Removed jsonConfig and jsonConfigVersion
 extern/nlohmann-json/*_jsonConfig*
 *.pbxproj
 *.xcworkspace
 *.xcsettings
 build*
+# clang-format.exe fetched by run-clang-format.ps1
+/clang-format.exe
