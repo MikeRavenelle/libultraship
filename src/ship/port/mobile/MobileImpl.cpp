@@ -1,4 +1,4 @@
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__TVOS__)
 #include "ship/port/mobile/MobileImpl.h"
 #include <SDL2/SDL.h>
 #include "libultraship/bridge/consolevariablebridge.h"

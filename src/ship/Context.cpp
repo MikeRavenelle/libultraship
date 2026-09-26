@@ -221,7 +221,7 @@ bool Context::InitResourceManager(const std::vector<std::string>& archivePaths,
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OTR file not found",
                                  "Main OTR file not found. Please generate one", nullptr);
         SPDLOG_ERROR("Main OTR file not found!");
-#ifdef __IOS__
+#if defined(__IOS__) || defined(__TVOS__)
         // We need this exit to close the app when we dismiss the dialog
         exit(0);
 #endif
@@ -399,11 +399,6 @@ std::string Context::GetAppBundlePath() {
     }
 #endif
 
-#ifdef __IOS__
-    const char* home = getenv("HOME");
-    return std::string(home) + "/Documents";
-#endif
-
 #ifdef NON_PORTABLE
     return CMAKE_INSTALL_PREFIX;
 #else
@@ -462,9 +457,13 @@ std::string Context::GetAppDirectoryPath(std::string appName) {
     }
 #endif
 
-#ifdef __IOS__
+#if defined(__IOS__) || defined(__TVOS__)
     const char* home = getenv("HOME");
+#if defined(__TVOS__)
+    return std::string(home) + "/Library/Caches";
+#else
     return std::string(home) + "/Documents";
+#endif
 #endif
 
 #if defined(__APPLE__)

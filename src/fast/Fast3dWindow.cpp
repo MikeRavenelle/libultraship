@@ -72,7 +72,7 @@ void Fast3dWindow::Init() {
             }
         }
     }
-#elif defined(__ANDROID__) || defined(__IOS__)
+#elif defined(__ANDROID__) || defined(__IOS__) || defined(__TVOS__)
     gameMode = true;
 #endif
 

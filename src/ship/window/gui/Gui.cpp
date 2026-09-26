@@ -30,7 +30,7 @@
 #include <SDL2/SDL_video.h>
 #endif
 
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__TVOS__)
 #include "ship/port/mobile/MobileImpl.h"
 #endif
 
@@ -272,7 +272,7 @@ bool Gui::SupportsViewports() {
     }
 #endif
 
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__TVOS__)
     return false;
 #endif
 
@@ -292,7 +292,7 @@ void Gui::HandleWindowEvents(WindowEvent event) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
             ImGui_ImplSDL2_ProcessEvent(static_cast<const SDL_Event*>(event.Sdl.Event));
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__TVOS__)
             Mobile::ImGuiProcessEvent(mImGuiIo->WantTextInput);
 #endif
             break;

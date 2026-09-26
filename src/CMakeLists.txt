@@ -29,7 +29,7 @@ add_subdirectory("libultraship")
 
 add_subdirectory("ship")
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "tvOS")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ship/utils/AppleFolderManager.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
@@ -46,7 +46,7 @@ target_include_directories(libultraship
 
 #=================== Linking ===================
 if(INCLUDE_MPQ_SUPPORT)
-    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "tvOS")
         target_link_libraries(libultraship PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,storm>")
     else()
         target_link_libraries(libultraship PUBLIC storm)
@@ -84,7 +84,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "tvOS")
     find_Library(OSX_FOUNDATION Foundation)
     find_Library(OSX_AVFOUNDATION AVFoundation)
     find_library(METAL Metal)
@@ -122,7 +122,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "tvOS")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
@@ -148,6 +148,34 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
         SPDLOG_ACTIVE_LEVEL=${SPDLOG_MIN_CUTOFF}
         __IOS__
+    )
+
+    set_xcode_property(${PROJECT_NAME} PRODUCT_BUNDLE_IDENTIFIER ${BUNDLE_ID} All)
+
+    if(NOT SIGN_LIBRARY)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+        )
+
+        if(TARGET SDL2)
+            set_target_properties(SDL2 PROPERTIES
+                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+                XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            )
+        endif()
+
+        set_target_properties(zip PROPERTIES
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+        )
+    endif()
+elseif (CMAKE_SYSTEM_NAME STREQUAL "tvOS")
+    target_compile_definitions(libultraship PRIVATE
+        $<$<CONFIG:Debug>:_DEBUG>
+        $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+        SPDLOG_ACTIVE_LEVEL=${SPDLOG_MIN_CUTOFF}
+        __TVOS__
     )
 
     set_xcode_property(${PROJECT_NAME} PRODUCT_BUNDLE_IDENTIFIER ${BUNDLE_ID} All)

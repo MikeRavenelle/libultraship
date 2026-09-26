@@ -61,7 +61,7 @@ static MTL::SamplerAddressMode gfx_cm_to_metal(uint32_t val) {
 // MARK: - ImGui & SDL Wrappers
 
 bool GfxRenderingAPIMetal::NonUniformThreadGroupSupported() {
-#ifdef __IOS__
+#if defined(__IOS__) || defined(__TVOS__)
     // iOS devices with A11 or later support dispatch threads
     return mDevice->supportsFamily(MTL::GPUFamilyApple4);
 #else
@@ -1168,7 +1168,7 @@ void GfxRenderingAPIMetal::SetSrgbMode() {
 } // namespace Fast
 
 bool Metal_IsSupported() {
-#ifdef __IOS__
+#if defined(__IOS__) || defined(__TVOS__)
     // iOS always supports Metal and MTLCopyAllDevices is not available
     return true;
 #else
