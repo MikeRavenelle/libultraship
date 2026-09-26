@@ -30,6 +30,10 @@
 #include <SDL.h>
 #include "fast/backends/gfx_metal.h"
 #include "ship/utils/macUtils.h"
+#if defined(__IOS__) || defined(__TVOS__)
+#include <SDL_syswm.h>
+#include "ship/utils/UIKitScene.h"
+#endif
 #else
 #include <SDL2/SDL.h>
 #define GL_GLEXT_PROTOTYPES 1
@@ -386,6 +390,13 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 
     mWnd = SDL_CreateWindow(title, posX, posY, mWindowWidth, mWindowHeight, flags);
+#if defined(__IOS__) || defined(__TVOS__)
+    SDL_SysWMinfo uikitInfo;
+    SDL_VERSION(&uikitInfo.version);
+    if (SDL_GetWindowWMInfo(mWnd, &uikitInfo)) {
+        Ship::AttachWindowToScene(static_cast<void*>(uikitInfo.info.uikit.window));
+    }
+#endif
 #ifdef _WIN32
     // Get Windows window handle and use it to subclass the window procedure.
     // Needed to circumvent SDLs DPI scaling problems under windows (original does only scale *sometimes*).
