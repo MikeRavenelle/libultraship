@@ -1,4 +1,7 @@
 set(PLATFORM "TVOSCOMBINED")
+if(NOT DEFINED DEPLOYMENT_TARGET)
+    set(DEPLOYMENT_TARGET "15.0")
+endif()
 include(FetchContent)
 FetchContent_Declare(iostoolchain
     GIT_REPOSITORY https://github.com/leetal/ios-cmake
